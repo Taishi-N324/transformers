@@ -701,6 +701,8 @@ class MixtralSparseMoeBlock(nn.Module):
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
 
         self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
+        # Parameters for gating logit normalization
+        self.gate_logit_norm_scale = nn.Parameter(torch.ones(1))
 
         # Jitter parameters
         self.jitter_noise = config.router_jitter_noise
@@ -713,6 +715,7 @@ class MixtralSparseMoeBlock(nn.Module):
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
+        router_logits = self.normalize_gate_logits(router_logits)
 
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
@@ -745,6 +748,11 @@ class MixtralSparseMoeBlock(nn.Module):
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
         return final_hidden_states, router_logits
 
+    def normalize_gate_logits(self, gate_logits):
+        mean = gate_logits.mean(dim=-1, keepdim=True)
+        std = gate_logits.std(dim=-1, keepdim=True)
+        normalized_logits = (gate_logits - mean) / (std + 1e-8)
+        return normalized_logits * self.gate_logit_norm_scale
 
 class MixtralDecoderLayer(nn.Module):
     def __init__(self, config: MixtralConfig, layer_idx: int):
