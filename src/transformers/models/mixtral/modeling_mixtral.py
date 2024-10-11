@@ -198,7 +198,7 @@ def load_balancing_loss_func(
         layer_aux_loss.append(overall_loss)
     
     overall_loss = sum(layer_aux_loss)
-    return overall_loss * num_experts / len(gate_logits)
+    return (overall_loss * num_experts / len(gate_logits)) / top_k
 
 
 # Copied from transformers.models.llama.modeling_llama.LlamaRMSNorm with Llama->Mixtral
