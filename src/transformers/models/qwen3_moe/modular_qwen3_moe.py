@@ -69,14 +69,11 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         super().__init__()
         self.num_experts = config.num_experts
         self.top_k = config.num_experts_per_tok
-        self.n_routed_experts = config.n_routed_experts
         self.routed_scaling_factor = config.routed_scaling_factor
-        self.n_group = config.n_group
-        self.topk_group = config.topk_group
         self.norm_topk_prob = config.norm_topk_prob
 
-        self.weight = nn.Parameter(torch.empty((self.n_routed_experts, config.hidden_size)))
-        self.register_buffer("e_score_correction_bias", torch.zeros(self.n_routed_experts))
+        self.weight = nn.Parameter(torch.empty((self.num_experts, config.hidden_size)))
+        self.register_buffer("e_score_correction_bias", torch.zeros(self.num_experts))
 
         # gating
         self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
