@@ -72,7 +72,6 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         self.routed_scaling_factor = config.routed_scaling_factor
         self.norm_topk_prob = config.norm_topk_prob
 
-        self.weight = nn.Parameter(torch.empty((self.num_experts, config.hidden_size)))
         self.register_buffer("e_score_correction_bias", torch.zeros(self.num_experts))
 
         # gating
