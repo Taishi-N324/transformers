@@ -175,6 +175,7 @@ class Qwen3MoeConfig(PretrainedConfig):
         num_hidden_layers=24,
         num_attention_heads=32,
         num_key_value_heads=4,
+        routed_scaling_factor=2.5,
         hidden_act="silu",
         max_position_embeddings=32768,
         initializer_range=0.02,
@@ -205,6 +206,7 @@ class Qwen3MoeConfig(PretrainedConfig):
         self.num_attention_heads = num_attention_heads
         self.use_sliding_window = use_sliding_window
         self.sliding_window = sliding_window if use_sliding_window else None
+        self.routed_scaling_factor = routed_scaling_factor
 
         self.num_key_value_heads = num_key_value_heads
         self.hidden_act = hidden_act

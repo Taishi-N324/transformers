@@ -69,7 +69,14 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         super().__init__()
         self.num_experts = config.num_experts
         self.top_k = config.num_experts_per_tok
+        self.n_routed_experts = config.n_routed_experts
+        self.routed_scaling_factor = config.routed_scaling_factor
+        self.n_group = config.n_group
+        self.topk_group = config.topk_group
         self.norm_topk_prob = config.norm_topk_prob
+
+        self.weight = nn.Parameter(torch.empty((self.n_routed_experts, config.hidden_size)))
+        self.register_buffer("e_score_correction_bias", torch.zeros(self.n_routed_experts))
 
         # gating
         self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
@@ -82,13 +89,13 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         batch_size, sequence_length, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
-        router_logits = self.gate(hidden_states)
-
-        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
+        router_logits = self.gate(hidden_states) + self.e_score_correction_bias.unsqueeze(0)
+        routing_weights = F.sigmoid(router_logits, dim=1, dtype=torch.float)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
         if self.norm_topk_prob:  # only diff with mixtral sparse moe block!
             routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
         # we cast back to the input dtype
+        routing_weights = routing_weights * self.routed_scaling_factor
         routing_weights = routing_weights.to(hidden_states.dtype)
 
         final_hidden_states = torch.zeros(
