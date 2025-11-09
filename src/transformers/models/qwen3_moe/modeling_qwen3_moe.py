@@ -228,9 +228,8 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         """ """
         batch_size, sequence_length, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
-        # router_logits: (batch * sequence_length, n_experts)
-        router_logits = self.gate(hidden_states) + self.e_score_correction_bias.unsqueeze(0)
-        routing_weights = torch.sigmoid(router_logits)
+        router_logits = self.gate(hidden_states)
+        routing_weights = router_logits.sigmoid() + self.e_score_correction_bias.unsqueeze(0)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
         if self.norm_topk_prob:  # only diff with mixtral sparse moe block!
             routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
