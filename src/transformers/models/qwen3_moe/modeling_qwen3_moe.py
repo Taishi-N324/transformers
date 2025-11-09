@@ -22,7 +22,6 @@
 from typing import Callable, Optional, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from ...activations import ACT2FN
@@ -231,7 +230,7 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         hidden_states = hidden_states.view(-1, hidden_dim)
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states) + self.e_score_correction_bias.unsqueeze(0)
-        routing_weights = F.sigmoid(router_logits, dim=1, dtype=torch.float)
+        routing_weights = torch.sigmoid(router_logits)
         routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
         if self.norm_topk_prob:  # only diff with mixtral sparse moe block!
             routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
