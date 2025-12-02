@@ -226,11 +226,16 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
         """ """
         batch_size, sequence_length, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
-        router_logits = self.gate(hidden_states)
-        routing_weights = router_logits.sigmoid() + self.gate.e_score_correction_bias.unsqueeze(0)
-        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
+        logits = self.gate(hidden_states)
+        scores = logits.sigmoid()
+        scores_for_routing = scores + self.gate.e_score_correction_bias.unsqueeze(0)
+
+        _, selected_experts = torch.topk(scores_for_routing, self.top_k, dim=-1)
+
+        routing_weights = torch.gather(scores, 1, selected_experts)
+
         if self.norm_topk_prob:  # only diff with mixtral sparse moe block!
-            routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+            routing_weights /= routing_weights.sum(dim=-1, keepdim=True) + 1e-20
         # we cast back to the input dtype
         routing_weights = routing_weights * self.routed_scaling_factor
         routing_weights = routing_weights.to(hidden_states.dtype)
@@ -259,7 +264,7 @@ class Qwen3MoeSparseMoeBlock(nn.Module):
             # the `top_x` tensor here.
             final_hidden_states.index_add_(0, top_x, current_hidden_states.to(hidden_states.dtype))
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
-        return final_hidden_states, router_logits
+        return final_hidden_states, logits
 
 
 @use_kernel_forward_from_hub("RMSNorm")
