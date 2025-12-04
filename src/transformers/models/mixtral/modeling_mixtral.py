@@ -27,7 +27,6 @@
 from typing import Callable, Optional, Union
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from transformers.utils.generic import check_model_inputs
@@ -89,11 +88,14 @@ class MixtralSparseMoeBlock(nn.Module):
         self.ffn_dim = config.intermediate_size
         self.num_experts = config.num_local_experts
         self.top_k = config.num_experts_per_tok
+        self.routed_scaling_factor = config.routed_scaling_factor
 
         # gating
         self.gate = nn.Linear(self.hidden_dim, self.num_experts, bias=False)
 
         self.experts = nn.ModuleList([MixtralBlockSparseTop2MLP(config) for _ in range(self.num_experts)])
+
+        self.gate.register_buffer("e_score_correction_bias", torch.zeros(self.num_experts, dtype=torch.float32))
 
         # Jitter parameters
         self.jitter_noise = config.router_jitter_noise
@@ -107,10 +109,13 @@ class MixtralSparseMoeBlock(nn.Module):
         # router_logits: (batch * sequence_length, n_experts)
         router_logits = self.gate(hidden_states)
 
-        routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
-        routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
-        routing_weights /= routing_weights.sum(dim=-1, keepdim=True)
+        scores = torch.sigmoid(router_logits.float()).to(router_logits.dtype)
+        scores_for_routing = scores + self.gate.e_score_correction_bias.unsqueeze(0)
+        _, selected_experts = torch.topk(scores_for_routing, self.top_k, dim=-1)
+        scores = torch.gather(scores, dim=-1, index=selected_experts)
+        routing_weights = scores / (scores.sum(dim=-1, keepdim=True) + 1e-20)
         # we cast back to the input dtype
+        routing_weights = routing_weights * self.routed_scaling_factor
         routing_weights = routing_weights.to(hidden_states.dtype)
 
         final_hidden_states = torch.zeros(
